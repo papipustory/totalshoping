@@ -731,17 +731,23 @@ class GuidecomParser:
                 Product(
                     name="🔍 검색 결과가 없습니다",
                     price="안내", 
-                    specifications="다른 검색어로 시도해보세요. 예: SSD, 그래픽카드, 메모리, 메인보드 등"
+                    specifications="다른 검색어로 시도해보세요. 예: SSD, 그래픽카드, 메모리, 메인보드 등",
+                    product_link="",
+                    site="가이드컴"
                 ),
                 Product(
                     name="🌐 서버 연결 문제일 수 있습니다",
                     price="해결방법", 
-                    specifications="1) 잠시 후 다시 시도 2) 검색어를 단순하게 입력 3) 브랜드명 대신 제품 종류로 검색"
+                    specifications="1) 잠시 후 다시 시도 2) 검색어를 단순하게 입력 3) 브랜드명 대신 제품 종류로 검색",
+                    product_link="",
+                    site="가이드컴"
                 ),
                 Product(
                     name="📝 검색 팁",
                     price="도움말", 
-                    specifications="• '삼성 SSD' 대신 'SSD'로 검색 • 영문보다는 한글 검색어 권장 • 너무 구체적인 모델명보다는 일반적인 제품군으로 검색"
+                    specifications="• '삼성 SSD' 대신 'SSD'로 검색 • 영문보다는 한글 검색어 권장 • 너무 구체적인 모델명보다는 일반적인 제품군으로 검색",
+                    product_link="",
+                    site="가이드컴"
                 )
             ]
             
