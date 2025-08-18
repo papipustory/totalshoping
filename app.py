@@ -51,13 +51,21 @@ if search_button:
                 except Exception as e:
                     st.warning(f"가이드컴 제조사 검색 중 오류: {str(e)}")
                 
-                # 제조사 통합 (중복 제거)
+                # 제조사 통합 (각 사이트별 코드 보존)
                 all_mfrs = {}
                 for mfr in compuzone_mfrs + guidecom_mfrs:
                     if isinstance(mfr, dict) and 'name' in mfr:
                         mfr_key = mfr['name'].lower().strip()
                         if mfr_key not in all_mfrs:
-                            all_mfrs[mfr_key] = mfr
+                            # 첫 번째 제조사: 그대로 저장하되 codes 리스트로 변환
+                            all_mfrs[mfr_key] = {
+                                'name': mfr['name'],
+                                'codes': [mfr['code']]  # 코드를 리스트로 저장
+                            }
+                        else:
+                            # 같은 이름의 제조사: 코드만 추가
+                            if mfr['code'] not in all_mfrs[mfr_key]['codes']:
+                                all_mfrs[mfr_key]['codes'].append(mfr['code'])
                 
                 st.session_state.manufacturers = list(all_mfrs.values())
                 st.session_state.selected_manufacturers = {m['name']: False for m in st.session_state.manufacturers}
@@ -118,7 +126,8 @@ if st.session_state.manufacturers:
         selected_codes = []
         for i, manufacturer in enumerate(st.session_state.manufacturers):
             if st.session_state[f"mfr_{i}"]:
-                selected_codes.append(manufacturer['code'])
+                # 각 제조사의 모든 사이트별 코드를 추가
+                selected_codes.extend(manufacturer['codes'])
         
         if not selected_codes:
             st.warning("하나 이상의 제조사를 선택해주세요.")
