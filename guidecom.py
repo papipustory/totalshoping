@@ -405,7 +405,7 @@ class GuidecomParser:
                 name_el = row.select_one(selector)
                 if name_el:
                     self._dbg(f"Found name with selector: {selector}")
-                    # 링크 URL 추출
+                    # 링크 URL 추출 - name_el이 링크가 아닌 경우 부모 또는 형제 요소에서 링크 찾기
                     if name_el.get('href'):
                         href = name_el.get('href')
                         if href.startswith('/'):
@@ -414,6 +414,38 @@ class GuidecomParser:
                             product_link = href
                         else:
                             product_link = f"https://www.guidecom.co.kr/{href}"
+                        self._dbg(f"Found link from name element: {product_link}")
+                    else:
+                        # name_el이 링크가 아닌 경우 (예: .goodsname1은 span), 부모나 형제에서 링크 찾기
+                        link_el = None
+                        # 1. 부모 요소가 링크인지 확인
+                        parent = name_el.parent
+                        if parent and parent.name == 'a' and parent.get('href'):
+                            link_el = parent
+                        else:
+                            # 2. 같은 row 내에서 링크 찾기
+                            link_selectors = [
+                                ".desc h4.title a",
+                                "h4.title a", 
+                                ".desc .title a",
+                                ".title a",
+                                ".desc a",
+                                "a"
+                            ]
+                            for link_selector in link_selectors:
+                                link_el = row.select_one(link_selector)
+                                if link_el and link_el.get('href'):
+                                    break
+                        
+                        if link_el and link_el.get('href'):
+                            href = link_el.get('href')
+                            if href.startswith('/'):
+                                product_link = f"https://www.guidecom.co.kr{href}"
+                            elif href.startswith('http'):
+                                product_link = href
+                            else:
+                                product_link = f"https://www.guidecom.co.kr/{href}"
+                            self._dbg(f"Found link from separate element: {product_link}")
                     break
                     
             name = self._extract_text(name_el)
