@@ -81,7 +81,7 @@ class GuidecomParser:
     def _get_random_delay(self, a: float = 0.35, b: float = 0.9) -> float:
         return random.uniform(a, b)
 
-    def _wait_between_requests(self, min_gap: float = 0.25) -> None:
+    def _wait_between_requests(self, min_gap: float = 0.1) -> None:
         now = time.time()
         delta = now - self.last_request_time
         if delta < min_gap:
@@ -97,16 +97,16 @@ class GuidecomParser:
             self._dbg(f"Encoding fix failed: {e}")
             resp.encoding = 'euc-kr'
 
-    def _make_request(self, url: str, params: Optional[Dict[str, str]] = None, retries: int = 5) -> requests.Response:
+    def _make_request(self, url: str, params: Optional[Dict[str, str]] = None, retries: int = 2) -> requests.Response:
         last_exc = None
         for attempt in range(retries):
             try:
                 self._update_headers()
                 self._wait_between_requests()
                 
-                # 재시도시 더 긴 대기
+                # 재시도시 최소 대기
                 if attempt > 0:
-                    delay = self._get_random_delay(2.0 + attempt, 4.0 + attempt)
+                    delay = self._get_random_delay(0.3, 0.8)
                     self._dbg(f"Retry {attempt+1}/{retries}, waiting {delay:.2f}s")
                     time.sleep(delay)
                 
@@ -162,12 +162,22 @@ class GuidecomParser:
     def _post_list(self, keyword: str, order: str, page: int = 1, lpp: int = 30, use_computer_parts_filter: bool = True) -> Optional[BeautifulSoup]:
         """list.php로 직접 POST하여 goods-row HTML 조각을 받는다."""
         try:
+            # 먼저 메인 검색 페이지 방문으로 세션 설정
+            search_page_url = f"https://www.guidecom.co.kr/search/index.html?keyword={quote_plus(keyword)}&order={order}"
+            try:
+                self.session.get(search_page_url, timeout=10)
+            except:
+                pass  # 세션 설정 실패해도 계속 진행
+            
             self._update_headers()
             self._wait_between_requests()
-            referer = f"https://www.guidecom.co.kr/search/?keyword={quote_plus(keyword)}&order={order}"
+            
+            # 정확한 Referer와 헤더 설정
             headers = {
-                "Referer": referer,
-                "Content-Type": "application/x-www-form-urlencoded"
+                "Referer": search_page_url,
+                "X-Requested-With": "XMLHttpRequest",
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "Accept": "*/*"
             }
             data = {"keyword": keyword, "order": order, "lpp": lpp, "page": page, "y": 0}
             
@@ -176,32 +186,21 @@ class GuidecomParser:
                 # 키워드에 따라 관련성 높은 카테고리부터 시도
                 keyword_lower = keyword.lower()
                 
-                # 키워드 기반 카테고리 우선순위 매핑 (확장된 버전)
-                category_map = {
-                    "8800": ["cpu", "프로세서", "processor", "intel", "amd", "라이젠", "ryzen", "인텔", "셀러론", "celeron", "펜티엄", "pentium", "코어", "core", "i3", "i5", "i7", "i9", "xeon", "제온", "athlon", "애슬론"],
-                    "8801": ["메인보드", "마더보드", "motherboard", "mainboard", "보드", "board", "x570", "b550", "b450", "z490", "z590", "lga", "am4", "am5"],  
-                    "8802": ["메모리", "ram", "ddr", "ddr4", "ddr5", "ddr6", "dimm", "삼성램", "하이닉스", "corsair", "gskill", "crucial", "kingston"],
-                    "8803": ["그래픽", "그래픽카드", "gpu", "vga", "rtx", "gtx", "radeon", "rx", "nvidia", "엔비디아", "amd", "geforce", "지포스", "비디오카드"],
-                    "8804": ["hdd", "하드디스크", "하드", "hard disk", "western digital", "wd", "seagate", "시게이트", "toshiba", "도시바", "hitachi", "히타치", "barracuda"],
-                    "8855": ["ssd", "solid state", "nvme", "m.2", "sata ssd", "crucial", "samsung", "삼성", "990pro", "980pro", "970evo"],
-                    "8806": ["파워", "power", "psu", "파워서플라이", "전원공급장치", "80plus", "정격", "모듈러", "modular", "seasonic", "corsair"],
-                    "8807": ["케이스", "case", "컴퓨터케이스", "pc케이스", "타워", "tower", "미들타워", "풀타워", "atx", "mini-itx"],
-                    "8805": ["쿨러", "cooler", "cpu쿠러", "프로세서쿨러", "수랭", "수냉", "공랭", "공냉", "타워쿨러", "라디에이터", "noctua", "녹투아"],
-                    "8808": ["모니터", "monitor", "디스플레이", "display", "lcd", "led", "24인치", "27인치", "144hz", "4k", "게이밍"],
-                    "8809": ["키보드", "keyboard", "기계식", "mechanical", "텐키리스", "tkl", "무선", "rgb", "청축", "갈축", "적축"],
-                    "8810": ["마우스", "mouse", "게이밍마우스", "gaming mouse", "무선마우스", "광마우스", "dpi", "로지텍", "razer"]
-                }
-                
-                # 키워드 매칭으로 우선순위 카테고리 결정
+                # 빠른 카테고리 매칭 (주요 키워드만)
                 priority_categories = []
-                for cid, keywords in category_map.items():
-                    if any(k in keyword_lower for k in keywords):
-                        priority_categories.append(cid)
-                        break  # 첫 번째 매치만 사용
-                
-                # 매치되는 카테고리가 없으면 주요 부품 카테고리들 사용
-                if not priority_categories:
-                    priority_categories = ["8855", "8803", "8802", "8800", "8801", "8804"]
+                if any(k in keyword_lower for k in ["ssd", "nvme", "m.2", "solid"]):
+                    priority_categories = ["8855"]  # SSD
+                elif any(k in keyword_lower for k in ["rtx", "gtx", "그래픽", "gpu", "vga"]):
+                    priority_categories = ["8803"]  # 그래픽카드
+                elif any(k in keyword_lower for k in ["ram", "메모리", "ddr"]):
+                    priority_categories = ["8802"]  # 메모리
+                elif any(k in keyword_lower for k in ["cpu", "프로세서", "intel", "amd", "라이젠"]):
+                    priority_categories = ["8800"]  # CPU
+                elif any(k in keyword_lower for k in ["hdd", "하드", "wd", "seagate"]):
+                    priority_categories = ["8804"]  # HDD
+                else:
+                    # 빠른 대체: 주요 3개 카테고리만 시도
+                    priority_categories = ["8855", "8803", "8802"]
                 
                 self._dbg(f"Priority categories for '{keyword}': {priority_categories}")
                 
@@ -211,7 +210,7 @@ class GuidecomParser:
                         data_with_cid = data.copy()
                         data_with_cid["cid"] = cid
                         self._dbg(f"POST {self.list_url} with cid={cid}")
-                        resp = self.session.post(self.list_url, data=data_with_cid, headers=headers, timeout=30)
+                        resp = self.session.post(self.list_url, data=data_with_cid, headers=headers, timeout=15)
                         self._fix_encoding(resp)
                         
                         if resp.status_code == 200 and len(resp.text) > 100:
@@ -223,8 +222,8 @@ class GuidecomParser:
                                 self._dbg(f"Using category {cid} with {len(rows)} products")
                                 return soup
                                 
-                        # 카테고리별 요청 간격
-                        self._wait_between_requests(0.1)
+                        # 카테고리별 요청 간격 단축
+                        self._wait_between_requests(0.05)
                         
                     except Exception as e:
                         self._dbg(f"Category {cid} failed: {e}")
@@ -233,8 +232,8 @@ class GuidecomParser:
                 self._dbg("No results found in priority categories, trying fallback")
             
             # 컴퓨터 부품 필터가 결과를 못 찾거나 비활성화된 경우 기본 검색
-            self._dbg(f"POST {self.list_url} data={data} referer={referer}")
-            resp = self.session.post(self.list_url, data=data, headers=headers, timeout=30)
+            self._dbg(f"POST {self.list_url} data={data}")
+            resp = self.session.post(self.list_url, data=data, headers=headers, timeout=15)
             self._fix_encoding(resp)
             self._dbg(f"POST status={resp.status_code} encoding={resp.encoding} len={len(resp.text)}")
             if resp.status_code == 200 and len(resp.text) > 100:
@@ -639,17 +638,17 @@ class GuidecomParser:
         manufacturers: List[str] = []
         seen = set()
         try:
-            # 1) 카테고리 필터링 없이 직접 POST 요청 (더 많은 제조사 확보)
-            self._dbg("Getting manufacturers from POST request")
-            soup = self._post_list(keyword, "reco_goods", use_computer_parts_filter=False)
+            # 빠른 검색: 카테고리 필터링부터 시도 (더 정확한 결과)
+            self._dbg("Getting manufacturers with category filter")
+            soup = self._post_list(keyword, "reco_goods", use_computer_parts_filter=True)
 
-            # 2) 실패 시 카테고리 필터링 시도
+            # 실패 시에만 전체 검색 시도
             if not soup or not soup.find_all("div", class_="goods-row"):
-                self._dbg("Fallback to category filtered POST")
-                soup = self._post_list(keyword, "reco_goods", use_computer_parts_filter=True)
+                self._dbg("Fallback to unfiltered POST")
+                soup = self._post_list(keyword, "reco_goods", use_computer_parts_filter=False)
 
             if not soup or not soup.find_all("div", class_="goods-row"):
-                self._dbg("All POST methods failed for get_search_options")
+                self._dbg("No results found for get_search_options")
                 return []
 
             rows = soup.find_all("div", class_="goods-row")
@@ -657,8 +656,8 @@ class GuidecomParser:
 
             sample_names: List[str] = []
 
-            # 더 많은 상품에서 제조사 추출 (100개까지)
-            for idx, row in enumerate(rows[:100]):
+            # 적당한 상품에서 제조사 추출 (50개까지로 단축)
+            for idx, row in enumerate(rows[:50]):
                 name_el = row.select_one(".desc .goodsname1") or row.select_one(".desc h4.title a") or row.select_one("h4.title a")
                 nm = self._extract_text(name_el)
                 if self.debug and idx < 10:
@@ -668,7 +667,7 @@ class GuidecomParser:
                     manufacturers.append(maker)
                     seen.add(maker)
                     self._dbg(f"Found manufacturer: {maker}")
-                if len(manufacturers) >= 8:
+                if len(manufacturers) >= 6:
                     break
 
             if self.debug:
@@ -752,31 +751,9 @@ class GuidecomParser:
                     break
         self._dbg(f"get_unique_products: total={len(results)} unique names={len(seen_names)}")
         
-        # 결과가 없을 경우 더 유용한 안내 메시지 반환
+        # 결과가 없으면 빈 리스트 반환 (크롤링 기본 원칙)
         if not results:
-            self._dbg("No products found, returning helpful guidance")
-            return [
-                Product(
-                    name="🔍 검색 결과가 없습니다",
-                    price="안내", 
-                    specifications="다른 검색어로 시도해보세요. 예: SSD, 그래픽카드, 메모리, 메인보드 등",
-                    product_link="",
-                    site="가이드컴"
-                ),
-                Product(
-                    name="🌐 서버 연결 문제일 수 있습니다",
-                    price="해결방법", 
-                    specifications="1) 잠시 후 다시 시도 2) 검색어를 단순하게 입력 3) 브랜드명 대신 제품 종류로 검색",
-                    product_link="",
-                    site="가이드컴"
-                ),
-                Product(
-                    name="📝 검색 팁",
-                    price="도움말", 
-                    specifications="• '삼성 SSD' 대신 'SSD'로 검색 • 영문보다는 한글 검색어 권장 • 너무 구체적인 모델명보다는 일반적인 제품군으로 검색",
-                    product_link="",
-                    site="가이드컴"
-                )
-            ]
+            self._dbg("No products found, returning empty list")
+            return []
             
         return results[:10]
