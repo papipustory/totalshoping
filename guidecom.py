@@ -383,10 +383,20 @@ class GuidecomParser:
             ]
             
             name_el = None
+            product_link = ""
             for selector in name_selectors:
                 name_el = row.select_one(selector)
                 if name_el:
                     self._dbg(f"Found name with selector: {selector}")
+                    # 링크 URL 추출
+                    if name_el.get('href'):
+                        href = name_el.get('href')
+                        if href.startswith('/'):
+                            product_link = f"https://www.guidecom.co.kr{href}"
+                        elif href.startswith('http'):
+                            product_link = href
+                        else:
+                            product_link = f"https://www.guidecom.co.kr/{href}"
                     break
                     
             name = self._extract_text(name_el)
@@ -469,7 +479,7 @@ class GuidecomParser:
                 self._dbg("=== PRICE NOT FOUND ===")
                 self._dbg(f"Available elements with 'price' in class: {[str(el)[:100] for el in row.find_all(class_=lambda x: x and 'price' in str(x).lower())]}")
                 
-            return Product(name=name, price=price or "가격 정보 없음", specifications=specs or "사양 정보 없음", product_link="", site="가이드컴")
+            return Product(name=name, price=price or "가격 정보 없음", specifications=specs or "사양 정보 없음", product_link=product_link, site="가이드컴")
         except Exception as e:
             self._dbg(f"_parse_product_item exception: {e}")
             import traceback
