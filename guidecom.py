@@ -90,20 +90,12 @@ class GuidecomParser:
 
     def _fix_encoding(self, resp: requests.Response) -> None:
         try:
-            # 가이드컴은 EUC-KR 사용, 명시적으로 설정
-            if not resp.encoding or resp.encoding.lower() in ("iso-8859-1", "utf-8"):
-                # Content-Type에서 charset 확인
-                content_type = resp.headers.get('content-type', '').lower()
-                if 'euc-kr' in content_type:
-                    resp.encoding = 'euc-kr'
-                elif 'charset=euc-kr' in resp.text[:1000].lower():
-                    resp.encoding = 'euc-kr'
-                else:
-                    resp.encoding = resp.apparent_encoding or 'euc-kr'  # 기본값을 euc-kr로
-            self._dbg(f"Final encoding set to: {resp.encoding}")
+            # 가이드컴은 EUC-KR 사용, 항상 EUC-KR로 설정
+            resp.encoding = 'euc-kr'
+            self._dbg(f"Encoding set to: {resp.encoding}")
         except Exception as e:
             self._dbg(f"Encoding fix failed: {e}")
-            resp.encoding = 'euc-kr'  # 안전한 기본값
+            resp.encoding = 'euc-kr'
 
     def _make_request(self, url: str, params: Optional[Dict[str, str]] = None, retries: int = 5) -> requests.Response:
         last_exc = None
@@ -173,7 +165,10 @@ class GuidecomParser:
             self._update_headers()
             self._wait_between_requests()
             referer = f"https://www.guidecom.co.kr/search/?keyword={quote_plus(keyword)}&order={order}"
-            headers = {"Referer": referer}
+            headers = {
+                "Referer": referer,
+                "Content-Type": "application/x-www-form-urlencoded"
+            }
             data = {"keyword": keyword, "order": order, "lpp": lpp, "page": page, "y": 0}
             
             # 컴퓨터주요부품 카테고리 필터 적용
@@ -181,36 +176,31 @@ class GuidecomParser:
                 # 키워드에 따라 관련성 높은 카테고리부터 시도
                 keyword_lower = keyword.lower()
                 
-                # 간단한 키워드 우선순위 매핑
-                if any(k in keyword_lower for k in ["cpu", "프로세서", "processor", "intel", "amd", "라이젠", "ryzen", "인텔"]):
-                    priority_categories = ["8800"]  # CPU
-                elif any(k in keyword_lower for k in ["메인보드", "마더보드", "motherboard", "mainboard", "보드"]):
-                    priority_categories = ["8801"]  # 메인보드
-                elif any(k in keyword_lower for k in ["메모리", "ram", "ddr", "ddr4", "ddr5"]):
-                    priority_categories = ["8802"]  # 메모리
-                elif any(k in keyword_lower for k in ["그래픽", "gpu", "rtx", "gtx", "radeon", "rx", "nvidia", "지포스", "vga"]):
-                    priority_categories = ["8803"]  # 그래픽카드
-                elif any(k in keyword_lower for k in ["hdd", "하드디스크", "하드", "western digital", "wd", "seagate", "시게이트", "toshiba", "도시바"]):
-                    priority_categories = ["8804"]  # HDD 우선
-                elif any(k in keyword_lower for k in ["ssd", "solid state", "nvme", "m.2", "crucial", "samsung"]):
-                    priority_categories = ["8855"]  # SSD
-                elif any(k in keyword_lower for k in ["파워", "power", "psu", "파워서플라이", "전원공급", "80plus"]):
-                    priority_categories = ["8806"]  # 파워서플라이
-                elif any(k in keyword_lower for k in ["케이스", "case", "컴퓨터케이스", "pc케이스", "타워"]):
-                    priority_categories = ["8807"]  # 케이스
-                elif any(k in keyword_lower for k in ["쿨러", "cooler", "cpu쿨러", "수랭", "수냉", "공랭"]):
-                    priority_categories = ["8805"]  # CPU쿨러
-                elif any(k in keyword_lower for k in ["모니터", "monitor", "디스플레이", "display"]):
-                    priority_categories = ["8808"]  # 모니터
-                elif any(k in keyword_lower for k in ["키보드", "keyboard", "기계식"]):
-                    priority_categories = ["8809"]  # 키보드  
-                elif any(k in keyword_lower for k in ["마우스", "mouse", "게이밍마우스"]):
-                    priority_categories = ["8810"]  # 마우스
-                elif "디스크" in keyword_lower and not any(k in keyword_lower for k in ["hdd", "하드디스크", "하드"]):
-                    # "디스크"만 있고 HDD 관련 키워드가 없는 경우
-                    priority_categories = ["8855", "8804"]  # SSD 먼저, 그다음 HDD
-                else:
-                    # 일반 검색: 주요 컴퓨터 부품 카테고리들
+                # 키워드 기반 카테고리 우선순위 매핑 (확장된 버전)
+                category_map = {
+                    "8800": ["cpu", "프로세서", "processor", "intel", "amd", "라이젠", "ryzen", "인텔", "셀러론", "celeron", "펜티엄", "pentium", "코어", "core", "i3", "i5", "i7", "i9", "xeon", "제온", "athlon", "애슬론"],
+                    "8801": ["메인보드", "마더보드", "motherboard", "mainboard", "보드", "board", "x570", "b550", "b450", "z490", "z590", "lga", "am4", "am5"],  
+                    "8802": ["메모리", "ram", "ddr", "ddr4", "ddr5", "ddr6", "dimm", "삼성램", "하이닉스", "corsair", "gskill", "crucial", "kingston"],
+                    "8803": ["그래픽", "그래픽카드", "gpu", "vga", "rtx", "gtx", "radeon", "rx", "nvidia", "엔비디아", "amd", "geforce", "지포스", "비디오카드"],
+                    "8804": ["hdd", "하드디스크", "하드", "hard disk", "western digital", "wd", "seagate", "시게이트", "toshiba", "도시바", "hitachi", "히타치", "barracuda"],
+                    "8855": ["ssd", "solid state", "nvme", "m.2", "sata ssd", "crucial", "samsung", "삼성", "990pro", "980pro", "970evo"],
+                    "8806": ["파워", "power", "psu", "파워서플라이", "전원공급장치", "80plus", "정격", "모듈러", "modular", "seasonic", "corsair"],
+                    "8807": ["케이스", "case", "컴퓨터케이스", "pc케이스", "타워", "tower", "미들타워", "풀타워", "atx", "mini-itx"],
+                    "8805": ["쿨러", "cooler", "cpu쿠러", "프로세서쿨러", "수랭", "수냉", "공랭", "공냉", "타워쿨러", "라디에이터", "noctua", "녹투아"],
+                    "8808": ["모니터", "monitor", "디스플레이", "display", "lcd", "led", "24인치", "27인치", "144hz", "4k", "게이밍"],
+                    "8809": ["키보드", "keyboard", "기계식", "mechanical", "텐키리스", "tkl", "무선", "rgb", "청축", "갈축", "적축"],
+                    "8810": ["마우스", "mouse", "게이밍마우스", "gaming mouse", "무선마우스", "광마우스", "dpi", "로지텍", "razer"]
+                }
+                
+                # 키워드 매칭으로 우선순위 카테고리 결정
+                priority_categories = []
+                for cid, keywords in category_map.items():
+                    if any(k in keyword_lower for k in keywords):
+                        priority_categories.append(cid)
+                        break  # 첫 번째 매치만 사용
+                
+                # 매치되는 카테고리가 없으면 주요 부품 카테고리들 사용
+                if not priority_categories:
                     priority_categories = ["8855", "8803", "8802", "8800", "8801", "8804"]
                 
                 self._dbg(f"Priority categories for '{keyword}': {priority_categories}")
@@ -264,12 +254,10 @@ class GuidecomParser:
         return None
     
     def _try_alternative_methods(self, keyword: str, order: str) -> Optional[BeautifulSoup]:
-        """다양한 방법으로 상품 데이터 가져오기 시도"""
+        """다양한 방법으로 상품 데이터 가져오기 시도 - POST 중심으로 최적화"""
         methods = [
-            ("POST list.php with computer parts filter", lambda: self._post_list(keyword, order, use_computer_parts_filter=True)),
-            ("POST list.php", lambda: self._post_list(keyword, order, use_computer_parts_filter=False)),
-            ("GET with params", lambda: self._get_with_params(keyword, order)),
-            ("Alternative URLs", lambda: self._try_alternative_urls(keyword, order))
+            ("POST list.php with category filter", lambda: self._post_list(keyword, order, use_computer_parts_filter=True)),
+            ("POST list.php without filter", lambda: self._post_list(keyword, order, use_computer_parts_filter=False)),
         ]
         
         for method_name, method_func in methods:
@@ -282,34 +270,27 @@ class GuidecomParser:
             except Exception as e:
                 self._dbg(f"Method {method_name} failed: {e}")
                 
+        # POST 방법이 실패한 경우만 GET 방법 시도 (fallback)
+        self._dbg("POST methods failed, trying GET fallback")
+        try:
+            return self._get_with_params(keyword, order)
+        except Exception as e:
+            self._dbg(f"GET fallback failed: {e}")
+            
         return None
     
     def _get_with_params(self, keyword: str, order: str) -> Optional[BeautifulSoup]:
-        """GET 요청으로 직접 가져오기"""
+        """GET 요청으로 직접 가져오기 (fallback용 - 실제로는 빈 템플릿만 반환)"""
         try:
             params = {"keyword": keyword, "order": order}
             resp = self._make_request(self.base_url, params=params)
             soup = BeautifulSoup(resp.text, "lxml")
+            # GET 방식은 템플릿만 반환하므로 실제 상품이 없음을 로그
+            self._dbg("GET method returned template page (no actual products)")
             return soup
         except Exception as e:
             self._dbg(f"GET with params failed: {e}")
             return None
-    
-    def _try_alternative_urls(self, keyword: str, order: str) -> Optional[BeautifulSoup]:
-        """대체 URL들 시도"""
-        for alt_url in self.alternative_urls:
-            try:
-                self._dbg(f"Trying alternative URL: {alt_url}")
-                params = {"keyword": keyword, "order": order, "q": keyword}
-                resp = self._make_request(alt_url, params=params)
-                soup = BeautifulSoup(resp.text, "lxml")
-                rows = soup.find_all("div", class_="goods-row")
-                if rows:
-                    self._dbg(f"Found {len(rows)} products in {alt_url}")
-                    return soup
-            except Exception as e:
-                self._dbg(f"Alternative URL {alt_url} failed: {e}")
-        return None
 
     # ----------------------- Parsing helpers -----------------------
     def _find_goods_list(self, soup: BeautifulSoup):
@@ -653,44 +634,31 @@ class GuidecomParser:
     # ----------------------- Public API -----------------------
     def get_search_options(self, keyword: str) -> List[Dict[str, str]]:
         """
-        제조사 후보를 최대 8개까지 반환.
-        1) list.php POST 결과에서 우선 추출
-        2) 실패 시 검색 페이지(GET)에서 보조 추출
-        디버깅 출력:
-          - goods-row 개수
-          - 샘플 제품명들, 제품명->제조사 매핑 몇 개
+        제조사 후보를 최대 8개까지 반환 (POST 요청 최적화)
         """
         manufacturers: List[str] = []
         seen = set()
         try:
-            # 1) 다양한 방법으로 상품 데이터 가져오기 시도
-            soup = self._try_alternative_methods(keyword, "reco_goods")
-            
-            if not soup:
-                self._dbg("All methods failed, trying fallback approaches")
-                # 마지막 시도: 단순 GET 요청
-                try:
-                    params = {"keyword": keyword}
-                    resp = self._make_request(self.base_url, params=params)
-                    soup = BeautifulSoup(resp.text, "lxml")
-                except Exception as e:
-                    self._dbg(f"Fallback GET failed: {e}")
-                    return []
-                    
-            container = self._find_goods_list(soup) if soup else None
-            rows = container.find_all("div", class_="goods-row") if container else []
+            # 1) 카테고리 필터링 없이 직접 POST 요청 (더 많은 제조사 확보)
+            self._dbg("Getting manufacturers from POST request")
+            soup = self._post_list(keyword, "reco_goods", use_computer_parts_filter=False)
 
-            self._dbg(f"get_search_options: goods-row count={len(rows)}")
-            
-            # 디버그: HTML 구조 확인
-            if self.debug and soup:
-                self._dbg(f"=== SOUP CONTENT SAMPLE ===")
-                body_text = soup.get_text()[:1000] if soup.body else "No body found"
-                self._dbg(f"Body text sample: {body_text}")
-                
+            # 2) 실패 시 카테고리 필터링 시도
+            if not soup or not soup.find_all("div", class_="goods-row"):
+                self._dbg("Fallback to category filtered POST")
+                soup = self._post_list(keyword, "reco_goods", use_computer_parts_filter=True)
+
+            if not soup or not soup.find_all("div", class_="goods-row"):
+                self._dbg("All POST methods failed for get_search_options")
+                return []
+
+            rows = soup.find_all("div", class_="goods-row")
+            self._dbg(f"get_search_options: found {len(rows)} products")
+
             sample_names: List[str] = []
 
-            for idx, row in enumerate(rows[:80]):
+            # 더 많은 상품에서 제조사 추출 (100개까지)
+            for idx, row in enumerate(rows[:100]):
                 name_el = row.select_one(".desc .goodsname1") or row.select_one(".desc h4.title a") or row.select_one("h4.title a")
                 nm = self._extract_text(name_el)
                 if self.debug and idx < 10:
@@ -699,6 +667,7 @@ class GuidecomParser:
                 if maker and maker not in seen:
                     manufacturers.append(maker)
                     seen.add(maker)
+                    self._dbg(f"Found manufacturer: {maker}")
                 if len(manufacturers) >= 8:
                     break
 
