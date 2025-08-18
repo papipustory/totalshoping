@@ -46,7 +46,7 @@ class CompuzoneParser:
                 "StartNum": "0",
                 "PageNum": "1",
                 "ListType": "0",
-                "BigDivNo": "",
+                "BigDivNo": "4",  # 컴퓨터부품 카테고리
                 "MediumDivNo": "",
                 "DivNo": "",
                 "MinPrice": "0",
@@ -325,10 +325,24 @@ class CompuzoneParser:
     def get_search_options(self, keyword: str) -> List[Dict[str, str]]:
         """컴퓨존에서 검색 결과를 통해 브랜드를 추출합니다."""
         try:
-            # 간단한 방법: 실제 제품 검색 후 제품명에서 브랜드 추출
-            return self._extract_brands_from_search_results(keyword)
+            # 1단계: API에서 직접 제조사 정보 가져오기 (가장 빠름)
+            manufacturers = self._get_manufacturer_from_search_api(keyword)
+            if manufacturers:
+                print(f"✅ API를 통해 제조사 {len(manufacturers)}개 즉시 확인")
+                return manufacturers
+
+            # 2단계: API 실패 시, 실제 제품 목록에서 브랜드 추출 (느리지만 정확)
+            print("⚠️ API 제조사 검색 실패, 실제 제품에서 브랜드 추출 시도")
+            manufacturers_from_products = self._extract_brands_from_search_results(keyword)
+            if manufacturers_from_products:
+                print(f"✅ 실제 제품에서 제조사 {len(manufacturers_from_products)}개 추출 성공")
+                return manufacturers_from_products
             
-            # 3단계: API에서 제품명을 통해 브랜드 추출 (fallback)
+            # 3단계: 그래도 없으면, 알려진 제조사 ID 목록 반환 (최후의 수단)
+            print("⚠️ 최종 수단: 알려진 제조사 ID 목록 반환")
+            return self._get_known_manufacturer_ids(keyword)
+            
+            # 기존 코드 (이제 사용되지 않음)
             # URL 인코딩된 검색어로 요청
             encoded_keyword = urllib.parse.quote(keyword, encoding='utf-8')
             search_url = f"{self.base_url}?SearchProductKey={encoded_keyword}"
