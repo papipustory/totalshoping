@@ -3,6 +3,7 @@ import pandas as pd
 from compuzone import CompuzoneParser
 from guidecom import GuidecomParser
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 st.set_page_config(page_title="통합 상품 검색", layout="wide")
 
@@ -35,21 +36,24 @@ if search_button:
     st.session_state.keyword = keyword_input
     st.session_state.products = [] # 새로운 검색 시 이전 제품 결과 초기화
     if st.session_state.keyword:
-        with st.spinner("제조사 정보를 가져오는 중... (컴퓨존 + 가이드컴)"):
+        with st.spinner("제조사 정보를 병렬로 가져오는 중... (컴퓨존 + 가이드컴)"):
             try:
-                # 두 사이트에서 제조사 정보 수집
                 compuzone_mfrs = []
                 guidecom_mfrs = []
-                
-                try:
-                    compuzone_mfrs = st.session_state.compuzone_parser.get_search_options(st.session_state.keyword) or []
-                except Exception as e:
-                    st.warning(f"컴퓨존 제조사 검색 중 오류: {str(e)}")
-                
-                try:
-                    guidecom_mfrs = st.session_state.guidecom_parser.get_search_options(st.session_state.keyword) or []
-                except Exception as e:
-                    st.warning(f"가이드컴 제조사 검색 중 오류: {str(e)}")
+
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    future_compuzone = executor.submit(st.session_state.compuzone_parser.get_search_options, st.session_state.keyword)
+                    future_guidecom = executor.submit(st.session_state.guidecom_parser.get_search_options, st.session_state.keyword)
+
+                    try:
+                        compuzone_mfrs = future_compuzone.result() or []
+                    except Exception as e:
+                        st.warning(f"컴퓨존 제조사 검색 중 오류: {str(e)}")
+
+                    try:
+                        guidecom_mfrs = future_guidecom.result() or []
+                    except Exception as e:
+                        st.warning(f"가이드컴 제조사 검색 중 오류: {str(e)}")
                 
                 # 제조사 통합 (각 사이트별 코드 보존)
                 all_mfrs = {}
@@ -132,27 +136,26 @@ if st.session_state.manufacturers:
         if not selected_codes:
             st.warning("하나 이상의 제조사를 선택해주세요.")
         else:
-            with st.spinner('제품 정보를 검색 중입니다... (컴퓨존 + 가이드컴)'):
+            with st.spinner('제품 정보를 병렬로 검색 중입니다... (컴퓨존 + 가이드컴)'):
                 try:
-                    # 두 사이트에서 동시 검색
                     compuzone_products = []
                     guidecom_products = []
-                    
-                    try:
-                        compuzone_products = st.session_state.compuzone_parser.get_unique_products(
-                            st.session_state.keyword, selected_codes
-                        ) or []
-                        st.success(f"컴퓨존에서 {len(compuzone_products)}개 제품 검색 완료")
-                    except Exception as e:
-                        st.warning(f"컴퓨존 제품 검색 중 오류: {str(e)}")
-                    
-                    try:
-                        guidecom_products = st.session_state.guidecom_parser.get_unique_products(
-                            st.session_state.keyword, selected_codes
-                        ) or []
-                        st.success(f"가이드컴에서 {len(guidecom_products)}개 제품 검색 완료")
-                    except Exception as e:
-                        st.warning(f"가이드컴 제품 검색 중 오류: {str(e)}")
+
+                    with ThreadPoolExecutor(max_workers=2) as executor:
+                        future_compuzone = executor.submit(st.session_state.compuzone_parser.get_unique_products, st.session_state.keyword, selected_codes)
+                        future_guidecom = executor.submit(st.session_state.guidecom_parser.get_unique_products, st.session_state.keyword, selected_codes)
+
+                        try:
+                            compuzone_products = future_compuzone.result() or []
+                            st.success(f"컴퓨존에서 {len(compuzone_products)}개 제품 검색 완료")
+                        except Exception as e:
+                            st.warning(f"컴퓨존 제품 검색 중 오류: {str(e)}")
+
+                        try:
+                            guidecom_products = future_guidecom.result() or []
+                            st.success(f"가이드컴에서 {len(guidecom_products)}개 제품 검색 완료")
+                        except Exception as e:
+                            st.warning(f"가이드컴 제품 검색 중 오류: {str(e)}")
                     
                     # 제품 통합
                     all_products = compuzone_products + guidecom_products
