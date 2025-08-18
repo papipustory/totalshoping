@@ -181,17 +181,34 @@ class GuidecomParser:
                 # 키워드에 따라 관련성 높은 카테고리부터 시도
                 keyword_lower = keyword.lower()
                 
-                # 카테고리 우선순위 매핑
-                if any(k in keyword_lower for k in ["ssd", "하드", "디스크"]):
-                    priority_categories = ["8855", "8804"]  # SSD, HDD 우선
-                elif any(k in keyword_lower for k in ["그래픽", "gpu", "rtx", "gtx"]):
-                    priority_categories = ["8803"]  # 그래픽카드 우선
-                elif any(k in keyword_lower for k in ["메모리", "ram", "ddr"]):
-                    priority_categories = ["8802"]  # 메모리 우선
-                elif any(k in keyword_lower for k in ["cpu", "프로세서", "intel", "amd"]):
-                    priority_categories = ["8800"]  # CPU 우선
-                elif any(k in keyword_lower for k in ["메인보드", "마더보드", "motherboard"]):
-                    priority_categories = ["8801"]  # 메인보드 우선
+                # 간단한 키워드 우선순위 매핑
+                if any(k in keyword_lower for k in ["cpu", "프로세서", "processor", "intel", "amd", "라이젠", "ryzen", "인텔"]):
+                    priority_categories = ["8800"]  # CPU
+                elif any(k in keyword_lower for k in ["메인보드", "마더보드", "motherboard", "mainboard", "보드"]):
+                    priority_categories = ["8801"]  # 메인보드
+                elif any(k in keyword_lower for k in ["메모리", "ram", "ddr", "ddr4", "ddr5"]):
+                    priority_categories = ["8802"]  # 메모리
+                elif any(k in keyword_lower for k in ["그래픽", "gpu", "rtx", "gtx", "radeon", "rx", "nvidia", "지포스", "vga"]):
+                    priority_categories = ["8803"]  # 그래픽카드
+                elif any(k in keyword_lower for k in ["hdd", "하드디스크", "하드", "western digital", "wd", "seagate", "시게이트", "toshiba", "도시바"]):
+                    priority_categories = ["8804"]  # HDD 우선
+                elif any(k in keyword_lower for k in ["ssd", "solid state", "nvme", "m.2", "crucial", "samsung"]):
+                    priority_categories = ["8855"]  # SSD
+                elif any(k in keyword_lower for k in ["파워", "power", "psu", "파워서플라이", "전원공급", "80plus"]):
+                    priority_categories = ["8806"]  # 파워서플라이
+                elif any(k in keyword_lower for k in ["케이스", "case", "컴퓨터케이스", "pc케이스", "타워"]):
+                    priority_categories = ["8807"]  # 케이스
+                elif any(k in keyword_lower for k in ["쿨러", "cooler", "cpu쿨러", "수랭", "수냉", "공랭"]):
+                    priority_categories = ["8805"]  # CPU쿨러
+                elif any(k in keyword_lower for k in ["모니터", "monitor", "디스플레이", "display"]):
+                    priority_categories = ["8808"]  # 모니터
+                elif any(k in keyword_lower for k in ["키보드", "keyboard", "기계식"]):
+                    priority_categories = ["8809"]  # 키보드  
+                elif any(k in keyword_lower for k in ["마우스", "mouse", "게이밍마우스"]):
+                    priority_categories = ["8810"]  # 마우스
+                elif "디스크" in keyword_lower and not any(k in keyword_lower for k in ["hdd", "하드디스크", "하드"]):
+                    # "디스크"만 있고 HDD 관련 키워드가 없는 경우
+                    priority_categories = ["8855", "8804"]  # SSD 먼저, 그다음 HDD
                 else:
                     # 일반 검색: 주요 컴퓨터 부품 카테고리들
                     priority_categories = ["8855", "8803", "8802", "8800", "8801", "8804"]
