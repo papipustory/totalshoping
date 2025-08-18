@@ -27,8 +27,7 @@ if 'products' not in st.session_state:
 with st.form(key="search_form"):
     keyword_input = st.text_input(
         "검색어를 입력하세요:", 
-        placeholder="예: 그래픽카드, SSD", 
-        value=st.session_state.get("keyword", "")
+        placeholder="예: 그래픽카드, SSD"
     )
     search_button = st.form_submit_button(label="제조사 검색")
 
@@ -316,6 +315,29 @@ if st.session_state.products:
         background-color: var(--link-color);
         color: var(--background-color);
     }
+    
+    /* 열 너비 조정 */
+    .adaptive-table th:nth-child(1), .adaptive-table td:nth-child(1) {
+        width: 5%;  /* No. 열 */
+    }
+    
+    .adaptive-table th:nth-child(2), .adaptive-table td:nth-child(2) {
+        width: 35%; /* 제품명 열 */
+    }
+    
+    .adaptive-table th:nth-child(3), .adaptive-table td:nth-child(3) {
+        width: 12%; /* 가격 열 */
+    }
+    
+    .adaptive-table th:nth-child(4), .adaptive-table td:nth-child(4) {
+        width: 33%; /* 주요 사양 열 (기존보다 약간 줄임) */
+    }
+    
+    .adaptive-table th:nth-child(5), .adaptive-table td:nth-child(5) {
+        width: 15%; /* 구매링크 열 (기존보다 넓힘) */
+        white-space: nowrap; /* 링크가 다음 줄로 넘어가지 않도록 */
+        text-align: center; /* 중앙 정렬 */
+    }
     </style>
     """, unsafe_allow_html=True)
     
@@ -324,8 +346,19 @@ if st.session_state.products:
 
     # Reset button
     if st.button("새로 검색하기"):
-        st.session_state.keyword = ""
-        st.session_state.manufacturers = []
-        st.session_state.selected_manufacturers = {}
-        st.session_state.products = []
+        # 모든 상태 초기화
+        for key in ['keyword', 'manufacturers', 'selected_manufacturers', 'products']:
+            if key in st.session_state:
+                if key == 'keyword':
+                    st.session_state[key] = ""
+                elif key in ['manufacturers', 'products']:
+                    st.session_state[key] = []
+                else:  # selected_manufacturers
+                    st.session_state[key] = {}
+        
+        # 제조사 체크박스 상태도 초기화
+        keys_to_remove = [k for k in st.session_state.keys() if k.startswith('mfr_')]
+        for key in keys_to_remove:
+            del st.session_state[key]
+            
         st.rerun()
